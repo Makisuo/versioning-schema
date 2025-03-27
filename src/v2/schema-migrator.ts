@@ -1,4 +1,5 @@
 import { Effect, HashMap, Option, Schema, pipe } from "effect"
+import type { ParseOptions } from "effect/SchemaAST"
 import {
 	type MigrateError,
 	type MigrationEntry,
@@ -64,6 +65,8 @@ export interface SchemaMigrator {
 class SchemaMigratorBuilder {
 	private schemas = HashMap.empty<number, SchemaVersion<any>>()
 	private migrations = HashMap.empty<string, MigrationEntry<any, any>>()
+
+	constructor(private parsingOptions?: ParseOptions) {}
 
 	/**
 	 * @private
@@ -206,21 +209,22 @@ class SchemaMigratorBuilder {
 				return Effect.fail(new SchemaNotFoundError({ version: toVersion }))
 			}
 			const targetSchema = targetSchemaOpt.value.schema
+			const parsingOptions = this.parsingOptions
 
 			if (fromVersion === toVersion) {
 				const currentSchemaOpt = HashMap.get(finalSchemas, fromVersion)
 				if (Option.isNone(currentSchemaOpt)) {
 					return Effect.fail(new SchemaNotFoundError({ version: fromVersion }))
 				}
-				return Schema.decodeUnknown(currentSchemaOpt.value.schema)(data)
+				return Schema.decodeUnknown(currentSchemaOpt.value.schema)(data, parsingOptions)
 			}
 
-			return Effect.gen(function* (_) {
+			return Effect.gen(function* () {
 				const startSchemaOpt = HashMap.get(finalSchemas, fromVersion)
 				if (Option.isNone(startSchemaOpt)) {
-					return yield* _(Effect.fail(new SchemaNotFoundError({ version: fromVersion })))
+					return yield* Effect.fail(new SchemaNotFoundError({ version: fromVersion }))
 				}
-				let currentData = yield* _(Schema.decodeUnknown(startSchemaOpt.value.schema)(data))
+				let currentData = yield* Schema.decodeUnknown(startSchemaOpt.value.schema)(data, parsingOptions)
 
 				const direction = fromVersion < toVersion ? 1 : -1
 				const steps: Array<[number, number]> = []
@@ -232,20 +236,18 @@ class SchemaMigratorBuilder {
 					const migrationKey = `${currentV}-${nextV}`
 					const migrationOpt = HashMap.get(finalMigrations, migrationKey)
 					if (Option.isNone(migrationOpt)) {
-						return yield* _(
-							Effect.fail(
-								new MigrationNotFoundError({
-									fromVersion: currentV,
-									toVersion: nextV,
-								}),
-							),
+						return yield* Effect.fail(
+							new MigrationNotFoundError({
+								fromVersion: currentV,
+								toVersion: nextV,
+							}),
 						)
 					}
 					const migration = migrationOpt.value
-					currentData = yield* _(migration.migrate(currentData))
+					currentData = yield* migration.migrate(currentData)
 				}
 
-				const validatedData = yield* _(Schema.encode(targetSchema)(currentData))
+				const validatedData = yield* Schema.encode(targetSchema)(currentData)
 				return validatedData
 			})
 		}
@@ -265,4 +267,4 @@ class SchemaMigratorBuilder {
  * @description Factory function to create a new `SchemaMigratorBuilder` instance.
  * @returns {SchemaMigratorBuilder} A new builder instance.
  */
-export const createMigrator = () => new SchemaMigratorBuilder()
+export const createMigrator = (parseOptions?: ParseOptions) => new SchemaMigratorBuilder(parseOptions)

@@ -24,21 +24,7 @@ export interface SchemaMigrator {
 	readonly _migrations: HashMap.HashMap<string, MigrationEntry<unknown, unknown>>
 }
 
-// Helper type to extract the schema type for a given version number
-// This requires versions to be defined for type inference to work well.
-// We'll use a placeholder for now, refinement needed based on builder usage.
-type SchemaForVersion<V extends number, Reg = unknown> = Reg extends {
-	schemas: infer S
-}
-	? S extends HashMap.HashMap<number, SchemaVersion<infer A>>
-		? V extends keyof S
-			? Schema.Schema<A>
-			: Schema.Schema<unknown>
-		: Schema.Schema<unknown>
-	: Schema.Schema<unknown>
-
 // --- Builder Implementation ---
-
 class SchemaMigratorBuilder {
 	private schemas = HashMap.empty<number, SchemaVersion<any>>()
 	private migrations = HashMap.empty<string, MigrationEntry<any, any>>()
